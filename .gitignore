@@ -1,0 +1,3 @@
+*.o
+rtp_recv_dec
+rtp_send_cod
