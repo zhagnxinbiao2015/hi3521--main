@@ -29,7 +29,7 @@ RTP_SEND_OBJ := rtp_main.o
 
 EXE := rtp_recv_dec rtp_send_cod
 
-all: rtp_recv_dec rtp_send_cod 
+all: $(EXE)
 
 rtp_recv_dec: $(RTP_RECV_OBJ) $(COMM_OBJ)
 	$(CC) $(CFLAGS) -lpthread -lm -o $@ $^ $(MPI_LIBS) $(AUDIO_LIBA) $(JPEGD_LIBA)
