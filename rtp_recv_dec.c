@@ -91,7 +91,13 @@ HI_U32 gs_u32ViFrmRate = 0;
 SAMPLE_VDEC_SENDPARAM_S gs_SendParam[SAMPLE_MAX_VDEC_CHN_CNT];
 HI_S32 gs_s32Cnt;
 
-    
+
+#define SAMPLE_DBG(s32Ret)\
+do{\
+    printf("s32Ret=%#x,fuc:%s,line:%d\n", s32Ret, __FUNCTION__, __LINE__);\
+}while(0)
+
+
 
 
 /******************************************************************************
@@ -164,6 +170,151 @@ static HI_S32 SAMPLE_VDEC_CreateVdecChn(HI_S32 s32ChnID, SIZE_S *pstSize, PAYLOA
 }
 
 
+#define SAMPLE_AUDIO_AO_DEV 1    /*修改为1*/
+static HI_BOOL gs_bMicIn = HI_FALSE;
+static PAYLOAD_TYPE_E gs_enPayloadType = PT_ADPCMA;   /*音频格式*/
+static AUDIO_RESAMPLE_ATTR_S *gs_pstAoReSmpAttr = NULL;
+#define SAMPLE_AUDIO_PTNUMPERFRM   320
+
+
+
+HI_S32 AUDIO_AdecAo(AIO_ATTR_S *pstAioAttr)
+{
+        HI_S32      s32Ret;
+        AUDIO_DEV   AoDev = SAMPLE_AUDIO_AO_DEV;
+        AO_CHN      AoChn = 0;
+        ADEC_CHN    AdChn = 0;
+        FILE        *pfd = NULL;
+
+        if (NULL == pstAioAttr)
+        {
+            printf("[Func]:%s [Line]:%d [Info]:%s\n", __FUNCTION__, __LINE__, "NULL pointer");
+            return HI_FAILURE;
+        }
+
+        s32Ret = SAMPLE_COMM_AUDIO_CfgAcodec(pstAioAttr, gs_bMicIn);
+        if (HI_SUCCESS != s32Ret)
+        {
+            SAMPLE_DBG(s32Ret);
+            return HI_FAILURE;
+        }
+        
+        s32Ret = SAMPLE_COMM_AUDIO_StartAdec(AdChn, gs_enPayloadType);
+        if (s32Ret != HI_SUCCESS)
+        {
+            SAMPLE_DBG(s32Ret);
+            return HI_FAILURE;
+        }
+
+        s32Ret = SAMPLE_COMM_AUDIO_StartAo(AoDev, AoChn, pstAioAttr, gs_pstAoReSmpAttr);
+        if (s32Ret != HI_SUCCESS)
+        {
+            SAMPLE_DBG(s32Ret);
+            return HI_FAILURE;
+        }
+
+        s32Ret = SAMPLE_COMM_AUDIO_AoBindAdec(AoDev, AoChn, AdChn);
+        if (s32Ret != HI_SUCCESS)
+        {
+            SAMPLE_DBG(s32Ret);
+            return HI_FAILURE;
+        }
+
+        return HI_SUCCESS;
+
+#if 0
+        pfd = SAMPLE_AUDIO_OpenAdecFile(AdChn, gs_enPayloadType);
+        if (!pfd)
+        {
+            SAMPLE_DBG(HI_FAILURE);
+            return HI_FAILURE;
+        }
+        s32Ret = SAMPLE_COMM_AUDIO_CreatTrdFileAdec(AdChn, pfd);
+        if (s32Ret != HI_SUCCESS)
+        {
+            SAMPLE_DBG(s32Ret);
+            return HI_FAILURE;
+        }
+        
+        printf("bind adec:%d to ao(%d,%d) ok \n", AdChn, AoDev, AoChn);
+
+        printf("\nplease press twice ENTER to exit this sample\n");
+        getchar();
+        getchar();
+
+        SAMPLE_COMM_AUDIO_DestoryTrdFileAdec(AdChn);
+        SAMPLE_COMM_AUDIO_StopAo(AoDev, AoChn, gs_bAioReSample);
+        SAMPLE_COMM_AUDIO_StopAdec(AdChn);
+        SAMPLE_COMM_AUDIO_AoUnbindAdec(AoDev, AoChn, AdChn);
+#endif
+        return HI_SUCCESS;
+}
+
+
+
+/*初始化音频设备输出*/
+HI_S32 Init_AUDIO_AdecAo()
+{
+        AIO_ATTR_S stAioAttr;
+
+        /* init stAio. all of cases will use it */
+        stAioAttr.enSamplerate = AUDIO_SAMPLE_RATE_8000;
+        stAioAttr.enBitwidth = AUDIO_BIT_WIDTH_16;
+        stAioAttr.enWorkmode = AIO_MODE_I2S_SLAVE;
+        stAioAttr.enSoundmode = AUDIO_SOUND_MODE_MONO;
+        stAioAttr.u32EXFlag = 1;
+        stAioAttr.u32FrmNum = 30;
+        stAioAttr.u32PtNumPerFrm = SAMPLE_AUDIO_PTNUMPERFRM;
+        stAioAttr.u32ChnCnt = 2;
+        stAioAttr.u32ClkSel = 0;
+
+        AUDIO_AdecAo(&stAioAttr);
+
+        return HI_SUCCESS;
+}
+
+
+void SAMPLE_VDEC_WaitDestroyVdecChn(HI_S32 s32ChnID, VIDEO_MODE_E enVdecMode)
+{
+    HI_S32 s32Ret;
+    VDEC_CHN_STAT_S stStat;
+
+    memset(&stStat, 0, sizeof(VDEC_CHN_STAT_S));
+
+    s32Ret = HI_MPI_VDEC_StopRecvStream(s32ChnID);
+    if (s32Ret != HI_SUCCESS)
+    {
+        SAMPLE_PRT("HI_MPI_VDEC_StopRecvStream failed errno 0x%x \n", s32Ret);
+        return;
+    }
+
+    /*** wait destory ONLY used at frame mode! ***/
+    if (VIDEO_MODE_FRAME == enVdecMode)
+    {
+        while (1)
+        {
+            //printf("LeftPics:%d, LeftStreamFrames:%d\n", stStat.u32LeftPics,stStat.u32LeftStreamFrames);
+            usleep(40000);
+            s32Ret = HI_MPI_VDEC_Query(s32ChnID, &stStat);
+            if (s32Ret != HI_SUCCESS)
+            {
+                SAMPLE_PRT("HI_MPI_VDEC_Query failed errno 0x%x \n", s32Ret);
+                return;
+            }
+            if ((stStat.u32LeftPics == 0) && (stStat.u32LeftStreamFrames == 0))
+            {
+                printf("had no stream and pic left\n");
+                break;
+            }
+        }
+    }
+    s32Ret = HI_MPI_VDEC_DestroyChn(s32ChnID);
+    if (s32Ret != HI_SUCCESS)
+    {
+        SAMPLE_PRT("HI_MPI_VDEC_DestroyChn failed errno 0x%x \n", s32Ret);
+        return;
+    }
+}
 
 
 
@@ -189,6 +340,8 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
     HI_U32 u32WndNum, u32BlkSize;   //定义变量，后面是定义一个块的大小
 
     HI_BOOL bVoHd; // through Vpss or not. if vo is SD, needn't through vpss     //定义一个布尔变量
+
+    VO_INTF_TYPE_E vo_interface_type = VO_INTF_HDMI; /*输出接口改为HDMI*/
  
     /******************************************
      step 1: init varaible.
@@ -234,8 +387,8 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
     ******************************************/
     memset(&stVbConf,0,sizeof(VB_CONF_S));
 
-    //u32BlkSize = SAMPLE_COMM_SYS_CalcPicVbBlkSize(gs_enNorm,\
-    //           PIC_D1, SAMPLE_PIXEL_FORMAT, SAMPLE_SYS_ALIGN_WIDTH);
+    u32BlkSize = SAMPLE_COMM_SYS_CalcPicVbBlkSize(gs_enNorm,\
+               PIC_D1, SAMPLE_PIXEL_FORMAT, SAMPLE_SYS_ALIGN_WIDTH);
 
 	
     stVbConf.u32MaxPoolCnt = 128;
@@ -256,7 +409,7 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
     /******************************************
      step 3: start vpss, if ov is hd.
     ******************************************/  
-#if 0
+#if 1
     if (HI_TRUE == bVoHd)
     {
         s32Ret = SAMPLE_COMM_VPSS_Start(s32Cnt, &stSize, VPSS_MAX_CHN_NUM,NULL);
@@ -279,7 +432,7 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
      stVoPubAttr.enIntfSync = VO_OUTPUT_720P50;
 
     
-    stVoPubAttr.enIntfType = VO_INTF_VGA;
+    stVoPubAttr.enIntfType = vo_interface_type;//VO_INTF_VGA;
     stVoPubAttr.u32BgColor = 0x000000ff;
     stVoPubAttr.bDoubleFrame = HI_FALSE;
 
@@ -298,8 +451,22 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
         goto END_2;
     }
 
+
+if (HI_TRUE == bVoHd)
+    {
+        /* if it's displayed on HDMI, we should start HDMI */
+        if (stVoPubAttr.enIntfType & VO_INTF_HDMI)
+        {
+            if (HI_SUCCESS != SAMPLE_COMM_VO_HdmiStart(stVoPubAttr.enIntfSync))
+            {
+                SAMPLE_PRT("Start SAMPLE_COMM_VO_HdmiStart failed!\n");
+                goto END_1;
+            }
+        }
+    }
+
  
-#if 0
+#if 1
     for(i=0;i<u32WndNum;i++)
     {
         VoChn = i;
@@ -328,7 +495,7 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
         VdChn = i;        
         s32Ret = SAMPLE_VDEC_CreateVdecChn(VdChn, &stSize, enType, enVdecMode);
        
-#if 0     
+#if 1     
         /***** bind vdec to vpss *****/
         if (HI_TRUE == bVoHd)
         {
@@ -353,9 +520,9 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
 #endif
     }
 
-
 	return HI_SUCCESS;
-	
+
+ 
     /******************************************
      step : Unbind vdec to vpss & destroy vdec-chn
     ******************************************/
@@ -841,7 +1008,10 @@ int main(int argc, char* argv[] )
 	gs_s32Cnt = 1;//这是一个全局变量，设置输出时候是一个屏幕。
 
 	Init_MultiSock_VDEC_Process(PIC_D1, PT_H264, gs_s32Cnt, SAMPLE_VO_DEV_DHD0);//为解码做准备的函数，初始化硬件。括号里面的是函数的参数，这个函数在执行的时候 带着里面的变量执行。括号里面的变量已经有赋值里。
-	struct sockaddr_in servsockaddr;
+
+        Init_AUDIO_AdecAo();
+
+        struct sockaddr_in servsockaddr;
 
 	//sockid = IntiRtpRecSock(&servsockaddr);//初始化组播SOCKET,接收并解析组播的RTP包报文。后续在函数里面在写程序。
 

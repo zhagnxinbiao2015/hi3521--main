@@ -1,3 +1,6 @@
 *.o
 rtp_recv_dec
 rtp_send_cod
+
+_desktop.ini
+doc/_desktop.ini
