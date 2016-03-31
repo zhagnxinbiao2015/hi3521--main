@@ -265,7 +265,7 @@ HI_S32 AUDIO_AdecAo(AIO_ATTR_S *pstAioAttr)
 
 
 
-/*初始化音频设备输出*/
+/*初始化音频设备输出*/ /*可以设置流解码和帧解码方式*/
 HI_S32 Init_AUDIO_AdecAo()
 {
         AIO_ATTR_S stAioAttr;
@@ -301,7 +301,7 @@ HI_S32 Init_AUDIO_AdecAo()
         stHdmiAoAttr.enWorkmode = AIO_MODE_I2S_MASTER;
         stHdmiAoAttr.u32ChnCnt = 2;
 
-        SAMPLE_COMM_AUDIO_CfgAcodec(&stHdmiAoAttr, gs_bMicIn);
+        SAMPLE_COMM_AUDIO_CfgAcodec(&stAioAttr, gs_bMicIn);
     
         AUDIO_AdecAo(&stHdmiAoAttr);
 /***************************************/
