@@ -99,6 +99,9 @@ do{\
 
 
 
+#define HDMI_OUT
+
+
 
 /******************************************************************************
 * function : create vdec chn
@@ -170,34 +173,43 @@ static HI_S32 SAMPLE_VDEC_CreateVdecChn(HI_S32 s32ChnID, SIZE_S *pstSize, PAYLOA
 }
 
 
-#define SAMPLE_AUDIO_AO_DEV 1    /*修改为1*/
+#define SAMPLE_AUDIO_AO_DEV 0    /*修改为1*/
+
 static HI_BOOL gs_bMicIn = HI_FALSE;
 static PAYLOAD_TYPE_E gs_enPayloadType = PT_ADPCMA;   /*音频格式*/
 static AUDIO_RESAMPLE_ATTR_S *gs_pstAoReSmpAttr = NULL;
 #define SAMPLE_AUDIO_PTNUMPERFRM   320
+static AUDIO_RESAMPLE_ATTR_S *gs_pstAiReSmpAttr = NULL;
+
 
 
 
 HI_S32 AUDIO_AdecAo(AIO_ATTR_S *pstAioAttr)
 {
         HI_S32      s32Ret;
-        AUDIO_DEV   AoDev = SAMPLE_AUDIO_AO_DEV;
+        AUDIO_DEV   AoDev ;
         AO_CHN      AoChn = 0;
         ADEC_CHN    AdChn = 0;
         FILE        *pfd = NULL;
+
+#ifdef HDMI_OUT
+        AoDev = SAMPLE_AUDIO_HDMI_AO_DEV;
+#else
+        AoDev = SAMPLE_AUDIO_AO_DEV;
+#endif
 
         if (NULL == pstAioAttr)
         {
             printf("[Func]:%s [Line]:%d [Info]:%s\n", __FUNCTION__, __LINE__, "NULL pointer");
             return HI_FAILURE;
         }
-
-        s32Ret = SAMPLE_COMM_AUDIO_CfgAcodec(pstAioAttr, gs_bMicIn);
-        if (HI_SUCCESS != s32Ret)
-        {
-            SAMPLE_DBG(s32Ret);
-            return HI_FAILURE;
-        }
+/*放到函数前面去了*/
+      //  s32Ret = SAMPLE_COMM_AUDIO_CfgAcodec(pstAioAttr, gs_bMicIn);
+      //  if (HI_SUCCESS != s32Ret)
+        //{
+         //   SAMPLE_DBG(s32Ret);
+           // return HI_FAILURE;
+       // }
         
         s32Ret = SAMPLE_COMM_AUDIO_StartAdec(AdChn, gs_enPayloadType);
         if (s32Ret != HI_SUCCESS)
@@ -252,10 +264,14 @@ HI_S32 AUDIO_AdecAo(AIO_ATTR_S *pstAioAttr)
 
 
 
+
 /*初始化音频设备输出*/
 HI_S32 Init_AUDIO_AdecAo()
 {
         AIO_ATTR_S stAioAttr;
+        AIO_ATTR_S stHdmiAoAttr;
+
+         AUDIO_RESAMPLE_ATTR_S stAoReSampleAttr;
 
         /* init stAio. all of cases will use it */
         stAioAttr.enSamplerate = AUDIO_SAMPLE_RATE_8000;
@@ -268,7 +284,33 @@ HI_S32 Init_AUDIO_AdecAo()
         stAioAttr.u32ChnCnt = 2;
         stAioAttr.u32ClkSel = 0;
 
+#ifdef HDMI_OUT
+/*hdmi 输出*/
+        gs_pstAiReSmpAttr = NULL;
+                
+        /* ao 8k -> 48k */
+        stAoReSampleAttr.u32InPointNum = SAMPLE_AUDIO_PTNUMPERFRM;
+        stAoReSampleAttr.enInSampleRate = AUDIO_SAMPLE_RATE_8000;
+        stAoReSampleAttr.enReSampleType = AUDIO_RESAMPLE_1X6;
+        gs_pstAoReSmpAttr = &stAoReSampleAttr;
+        
+        memcpy(&stHdmiAoAttr, &stAioAttr, sizeof(AIO_ATTR_S));
+        stHdmiAoAttr.enBitwidth = AUDIO_BIT_WIDTH_16;
+        stHdmiAoAttr.enSamplerate = AUDIO_SAMPLE_RATE_48000;
+        stHdmiAoAttr.u32PtNumPerFrm = stAioAttr.u32PtNumPerFrm * 6;
+        stHdmiAoAttr.enWorkmode = AIO_MODE_I2S_MASTER;
+        stHdmiAoAttr.u32ChnCnt = 2;
+
+        SAMPLE_COMM_AUDIO_CfgAcodec(&stHdmiAoAttr, gs_bMicIn);
+    
+        AUDIO_AdecAo(&stHdmiAoAttr);
+/***************************************/
+#else
+        SAMPLE_COMM_AUDIO_CfgAcodec(&stAioAttr, gs_bMicIn);
         AUDIO_AdecAo(&stAioAttr);
+#endif
+
+        
 
         return HI_SUCCESS;
 }
@@ -341,7 +383,11 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
 
     HI_BOOL bVoHd; // through Vpss or not. if vo is SD, needn't through vpss     //定义一个布尔变量
 
+#ifdef HDMI_OUT
     VO_INTF_TYPE_E vo_interface_type = VO_INTF_HDMI; /*输出接口改为HDMI*/
+#else
+     VO_INTF_TYPE_E vo_interface_type = VO_INTF_VGA;
+#endif
  
     /******************************************
      step 1: init varaible.
@@ -451,7 +497,7 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
         goto END_2;
     }
 
-
+#if 0 /*音频解码初始化有做HDMI输出初始化*/
 if (HI_TRUE == bVoHd)
     {
         /* if it's displayed on HDMI, we should start HDMI */
@@ -464,7 +510,7 @@ if (HI_TRUE == bVoHd)
             }
         }
     }
-
+#endif
  
 #if 1
     for(i=0;i<u32WndNum;i++)
@@ -1007,10 +1053,12 @@ int main(int argc, char* argv[] )
 
 	gs_s32Cnt = 1;//这是一个全局变量，设置输出时候是一个屏幕。
 
-	Init_MultiSock_VDEC_Process(PIC_D1, PT_H264, gs_s32Cnt, SAMPLE_VO_DEV_DHD0);//为解码做准备的函数，初始化硬件。括号里面的是函数的参数，这个函数在执行的时候 带着里面的变量执行。括号里面的变量已经有赋值里。
-
+        
         Init_AUDIO_AdecAo();
 
+	Init_MultiSock_VDEC_Process(PIC_D1, PT_H264, gs_s32Cnt, SAMPLE_VO_DEV_DHD0);//为解码做准备的函数，初始化硬件。括号里面的是函数的参数，这个函数在执行的时候 带着里面的变量执行。括号里面的变量已经有赋值里。
+
+        
         struct sockaddr_in servsockaddr;
 
 	//sockid = IntiRtpRecSock(&servsockaddr);//初始化组播SOCKET,接收并解析组播的RTP包报文。后续在函数里面在写程序。
