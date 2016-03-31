@@ -359,6 +359,36 @@ void SAMPLE_VDEC_WaitDestroyVdecChn(HI_S32 s32ChnID, VIDEO_MODE_E enVdecMode)
 }
 
 
+void Mpp_Sys_Init(HI_S32 s32Cnt)
+{
+    VB_CONF_S stVbConf; 
+    HI_U32 u32WndNum, u32BlkSize; 
+    HI_S32 s32Ret;   
+    
+    memset(&stVbConf,0,sizeof(VB_CONF_S));
+
+    u32BlkSize = SAMPLE_COMM_SYS_CalcPicVbBlkSize(gs_enNorm,\
+               PIC_D1, SAMPLE_PIXEL_FORMAT, SAMPLE_SYS_ALIGN_WIDTH);
+
+	
+    stVbConf.u32MaxPoolCnt = 128;
+
+    /* hist buf*/
+    stVbConf.astCommPool[0].u32BlkSize = (196*4);
+    stVbConf.astCommPool[0].u32BlkCnt = s32Cnt * 6;
+    memset(stVbConf.astCommPool[0].acMmzName,0,
+        sizeof(stVbConf.astCommPool[0].acMmzName));
+	
+    s32Ret = SAMPLE_COMM_SYS_Init(&stVbConf);
+    if (HI_SUCCESS != s32Ret)
+    {
+        SAMPLE_PRT("mpp init failed!\n");
+        return HI_FAILURE;
+    }
+
+
+}
+
 
 /******************************************************************************
 * function : vdec process
@@ -428,6 +458,8 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
     {
         bVoHd = HI_TRUE;
     }
+
+#if 0 /*mpp init 见函数Mpp_Sys_Init*/
     /******************************************
      step 2: mpp system init.
     ******************************************/
@@ -451,7 +483,7 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
         SAMPLE_PRT("mpp init failed!\n");
         return HI_FAILURE;
     }
-  
+ #endif
     /******************************************
      step 3: start vpss, if ov is hd.
     ******************************************/  
@@ -1053,10 +1085,12 @@ int main(int argc, char* argv[] )
 
 	gs_s32Cnt = 1;//这是一个全局变量，设置输出时候是一个屏幕。
 
-        
+        Mpp_Sys_Init(gs_s32Cnt);
+
         Init_AUDIO_AdecAo();
 
 	Init_MultiSock_VDEC_Process(PIC_D1, PT_H264, gs_s32Cnt, SAMPLE_VO_DEV_DHD0);//为解码做准备的函数，初始化硬件。括号里面的是函数的参数，这个函数在执行的时候 带着里面的变量执行。括号里面的变量已经有赋值里。
+
 
         
         struct sockaddr_in servsockaddr;
