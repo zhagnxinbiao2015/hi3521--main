@@ -359,7 +359,7 @@ void SAMPLE_VDEC_WaitDestroyVdecChn(HI_S32 s32ChnID, VIDEO_MODE_E enVdecMode)
 }
 
 
-void Mpp_Sys_Init(HI_S32 s32Cnt)
+int Mpp_Sys_Init(HI_S32 s32Cnt)
 {
     VB_CONF_S stVbConf; 
     HI_U32 u32WndNum, u32BlkSize; 
@@ -762,7 +762,7 @@ typedef enum rtp_pac_marker
 
 
 /*解析RTP 帧头*/
-int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts, int *payloadoffset)
+int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts, int *payloadoffset, int *payload_type)
 {
 	if(!buff || (12 > len))
 		return rtp_pac_error;
@@ -786,7 +786,7 @@ int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts
 
 	//printf("#############seq = %d\n", ntohs(rtp_hdr->seq_no));
 	//96是h264 视频格式的类型，音频的负载类型值也是根据音频编码区分的
-	if((2 != rtp_hdr->version)  ||  (96 != rtp_hdr->payload) /*|| (98 != rtp_hdr->payload) */)
+	if((2 != rtp_hdr->version)  ||  (96 != rtp_hdr->payload) || (8 != rtp_hdr->payload) )
 	{
 		//rtp 版本错误或者RTP 负载类型不是96(H264)  ,  ；
 		//是否还需要在判断下ssrc ，信息源
@@ -794,7 +794,7 @@ int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts
 		return rtp_pac_error;
 	}
 
-	
+	*payload_type = rtp_hdr->payload;
 #if 1
 		payloadlen += 4*(rtp_hdr->csrc_len);
 	
@@ -846,6 +846,7 @@ int IntiRtpRecSock(struct sockaddr_in *addr)
 	int err = -1;
 	rtp_marker_type rtp_marker;
 	int payloadoffset;
+        int payload_type;
 
 	//建立组播网络socket
 	s = socket(AF_INET, SOCK_DGRAM, 0);
@@ -936,7 +937,7 @@ int IntiRtpRecSock(struct sockaddr_in *addr)
 			continue;
 		}
 		//printf("Recv  index  message : len = %d  \n", n);
-		rtp_marker = Parse_RtpHeader(buff, n, &nowUTS, &payloadoffset);
+		rtp_marker = Parse_RtpHeader(buff, n, &nowUTS, &payloadoffset, &payload_type);
 
 		if(rtp_marker == rtp_pac_end)
 		{
@@ -1063,6 +1064,9 @@ int InitRtpTcpSock(int port, char *addr, struct sockaddr_in *serversockaddr)
 /****************************************************************************
 * function: main
 ****************************************************************************/
+    HI_U64  u64Audio_PTS = 0;  
+
+
 
 int main(int argc, char* argv[] )
 {
@@ -1075,6 +1079,12 @@ int main(int argc, char* argv[] )
 	unsigned char framebuff[311040];
 	unsigned int framelen = 0;
 	VDEC_STREAM_S stStream;
+
+        int paypload_type;
+        unsigned int audio_preUTS = 0, audio_nowUTS = 0;
+        AUDIO_STREAM_S stAudioStream;    
+
+        stAudioStream.u32Seq = 1;
 
 	char *cmd = "ifconfig eth0 192.168.1.20";
 	system(cmd);     //上面两个语句，就是把IP地址指定为192.168.1.20  。但通常的话，指定IP地址会在LINUX脚本里面指定。
@@ -1121,7 +1131,7 @@ int main(int argc, char* argv[] )
 		
 		//continue;
 		//printf("recv success \n");
-		rtp_marker = Parse_RtpHeader(buff, len, &nowUTS, &payloadoffset);  //buff接收到的报文，由RTP格式进行解码。并把是否是一帧数据的报文，返回给RTPMAKER ,目的是判断是否一帧最后报文，如果是，就用输出函数来解码播放。
+		rtp_marker = Parse_RtpHeader(buff, len, &nowUTS, &payloadoffset, &paypload_type);  //buff接收到的报文，由RTP格式进行解码。并把是否是一帧数据的报文，返回给RTPMAKER ,目的是判断是否一帧最后报文，如果是，就用输出函数来解码播放。
 		if(rtp_marker == rtp_pac_end) //一帧接收完毕将之前接收的数据组装成一帧的视频数据
 		{
 			memcpy(framebuff + framelen, buff + payloadoffset, len - payloadoffset);//如果接收到是帧的结尾，就进行内存拷贝，把BUFF拷贝到帧缓存FRAMEBUFF里面，输出函数会来FRAMEBUFF里面取数据输出。
@@ -1138,18 +1148,34 @@ int main(int argc, char* argv[] )
 		{
 			continue;
 		}
-		printf("time %d len %d\n", nowUTS - preUTS, framelen);
-		u64PTS = u64PTS + (nowUTS - preUTS); //时间戳递增
-		stStream.u64PTS  = u64PTS;
-    	stStream.pu8Addr = framebuff; //一帧视频的地址
-    	stStream.u32Len  = framelen; //一帧视频的长度
 
-		HI_MPI_VDEC_SendStream(0, &stStream, HI_IO_BLOCK);   //HI_MPI_VDEC_SendStream就是SDK里面的内容。就是由芯片厂家提供的。
-	//ststream是一个结构体，这个结构体包含了三个变量，stStream.u64PTS是SDK里面指定的时间戳变量。stStream.pu8Addr 是SDK里面指定的帧地址的变量。stStream.u32Len是SDK里指定的帧的长度。
-		framelen = 0;  //要开始接收下一帧数据，所以要把帧的长度清零。
+              if(paypload_type == 96)
+		{
+                    printf("time %d len %d\n", nowUTS - preUTS, framelen);
+                    u64PTS = u64PTS + (nowUTS - preUTS); //时间戳递增
+                    stStream.u64PTS  = u64PTS;
+                    stStream.pu8Addr = framebuff; //一帧视频的地址
+                    stStream.u32Len  = framelen; //一帧视频的长度
 
-		preUTS = nowUTS; //把现在的时间戳时间变成上一帧时间了。
-		}
+                    HI_MPI_VDEC_SendStream(0, &stStream, HI_IO_BLOCK);   //HI_MPI_VDEC_SendStream就是SDK里面的内容。就是由芯片厂家提供的。
+                    //ststream是一个结构体，这个结构体包含了三个变量，stStream.u64PTS是SDK里面指定的时间戳变量。stStream.pu8Addr 是SDK里面指定的帧地址的变量。stStream.u32Len是SDK里指定的帧的长度。
+                    framelen = 0;  //要开始接收下一帧数据，所以要把帧的长度清零。
+
+                    preUTS = nowUTS; //把现在的时间戳时间变成上一帧时间了。
+              }
+              else
+              {
+                        printf("time %d len %d\n", audio_nowUTS - audio_preUTS, framelen);
+                        u64Audio_PTS = u64Audio_PTS +  (audio_nowUTS - audio_preUTS); //时间戳递增
+                        stAudioStream.pStream = framebuff;
+                        stAudioStream.u32Len = framelen;
+
+                        HI_MPI_ADEC_SendStream(0, &stAudioStream, HI_TRUE);
+
+                         stAudioStream.u32Seq++;
+
+              }
+	}
 	
 	return HI_SUCCESS; //return  指执行到这里程序就全部释放了。
 }
