@@ -262,7 +262,32 @@ HI_S32 AUDIO_AdecAo(AIO_ATTR_S *pstAioAttr)
         return HI_SUCCESS;
 }
 
+static char* SAMPLE_AUDIO_Pt2Str(PAYLOAD_TYPE_E enType)
+{
+    if (PT_G711A == enType)  return "g711a";
+    else if (PT_G711U == enType)  return "g711u";
+    else if (PT_ADPCMA == enType)  return "adpcm";
+    else if (PT_G726 == enType)  return "g726";
+    else if (PT_LPCM == enType)  return "pcm";
+    else return "data";
+}
 
+static FILE * SAMPLE_AUDIO_OpenAencFile(AENC_CHN AeChn, PAYLOAD_TYPE_E enType)
+{
+    FILE *pfd;
+    HI_CHAR aszFileName[128];
+    
+    /* create file for save stream*/
+    sprintf(aszFileName, "audio_chn%d.%s", AeChn, SAMPLE_AUDIO_Pt2Str(enType));
+    pfd = fopen(aszFileName, "w+");
+    if (NULL == pfd)
+    {
+        printf("%s: open file %s failed\n", __FUNCTION__, aszFileName);
+        return NULL;
+    }
+    printf("open stream file:\"%s\" for aenc ok\n", aszFileName);
+    return pfd;
+}
 
 
 /*初始化音频设备输出*/ /*可以设置流解码和帧解码方式*/
@@ -304,6 +329,13 @@ HI_S32 Init_AUDIO_AdecAo()
         SAMPLE_COMM_AUDIO_CfgAcodec(&stAioAttr, gs_bMicIn);
     
         AUDIO_AdecAo(&stHdmiAoAttr);
+
+#if 0
+		FILE *pfd;
+		pfd= SAMPLE_AUDIO_OpenAencFile(0, gs_enPayloadType); 
+		SAMPLE_COMM_AUDIO_CreatTrdAencAdec(0, 0, pfd);
+		while(1) sleep(5);
+#endif		
 /***************************************/
 #else
         SAMPLE_COMM_AUDIO_CfgAcodec(&stAioAttr, gs_bMicIn);
@@ -514,14 +546,14 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
     stVoPubAttr.u32BgColor = 0x000000ff;
     stVoPubAttr.bDoubleFrame = HI_FALSE;
 
- 
+ #if 0 /*音频解码初始化了*/
     s32Ret = SAMPLE_COMM_VO_StartDevLayer(VoDev, &stVoPubAttr, gs_u32ViFrmRate);
     if (HI_SUCCESS != s32Ret)
     {
         SAMPLE_PRT("Start SAMPLE_COMM_VO_StartDevLayer failed!\n");
         goto END_1;
     }
-    
+#endif  
     s32Ret = SAMPLE_COMM_VO_StartChn(VoDev, &stVoPubAttr, enVoMode);
     if (HI_SUCCESS != s32Ret)
     {
@@ -773,10 +805,10 @@ int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts
 
 	rtp_hdr =(RTP_FIXED_HEADER*)&buff[0]; 
 
-#if 0
+#if 1
 	for(i = 0; i < 12; i++)
 	{
-		printf(" %d -", buff[i]);
+		//printf(" %d -", buff[i]);
 	}
 	printf("\n");
 
@@ -786,15 +818,18 @@ int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts
 
 	//printf("#############seq = %d\n", ntohs(rtp_hdr->seq_no));
 	//96是h264 视频格式的类型，音频的负载类型值也是根据音频编码区分的
-	if((2 != rtp_hdr->version)  ||  (96 != rtp_hdr->payload) || (8 != rtp_hdr->payload) )
+	*payload_type = rtp_hdr->payload;
+
+	if((2 != rtp_hdr->version)  && ((96 == *payload_type) || (8 == *payload_type)) )
 	{
 		//rtp 版本错误或者RTP 负载类型不是96(H264)  ,  ；
 		//是否还需要在判断下ssrc ，信息源
 		//还需要判断扩展数据长度以及csrc len ， 
+		printf("rtp para wrong\n");
 		return rtp_pac_error;
 	}
 
-	*payload_type = rtp_hdr->payload;
+	
 #if 1
 		payloadlen += 4*(rtp_hdr->csrc_len);
 	
@@ -825,7 +860,7 @@ int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts
 	if(rtp_hdr->marker == 1)
 	{
 		//接收一帧视频数据完毕
-	
+		//printf("rtp_pac_end\n");
 		return rtp_pac_end;
 	}
 	else
@@ -1024,8 +1059,12 @@ int InitRtpUdpSock(int port)
 	local_addr.sin_port = htons(port);
 	bind(sockid,(struct sockaddr*)&local_addr, sizeof(local_addr)) ;
 	printf("recv \n");
-	len = recvfrom(sockid, buff, 1500, 0, (struct sockaddr *)&servsockaddr, &addr_len);
-	printf("len = %d \n", len);
+
+	//while(1)
+	{
+		len = recvfrom(sockid, buff, 1500, 0, (struct sockaddr *)&servsockaddr, &addr_len);
+		printf("len = %d \n", len);
+	}
 	return sockid;
 }
 
@@ -1097,13 +1136,16 @@ int main(int argc, char* argv[] )
 
         Mpp_Sys_Init(gs_s32Cnt);
 
-        Init_AUDIO_AdecAo();
+        
+		Init_AUDIO_AdecAo();
+
+		sleep(1);
 
 	Init_MultiSock_VDEC_Process(PIC_D1, PT_H264, gs_s32Cnt, SAMPLE_VO_DEV_DHD0);//为解码做准备的函数，初始化硬件。括号里面的是函数的参数，这个函数在执行的时候 带着里面的变量执行。括号里面的变量已经有赋值里。
 
-
+	
         
-        struct sockaddr_in servsockaddr;
+     struct sockaddr_in servsockaddr;
 
 	//sockid = IntiRtpRecSock(&servsockaddr);//初始化组播SOCKET,接收并解析组播的RTP包报文。后续在函数里面在写程序。
 
@@ -1123,8 +1165,8 @@ int main(int argc, char* argv[] )
 	while(1)
 	{	memset(buff, 0, 1500);   //memset是系统函数，对内存进行设置。这在别人的程序里面也是这个名称。buff是我们上面定义的变量。0是把内存里面的都置为0,1500是BUFF的大小。
 		len = recvfrom(sockid, buff, 1500, 0, (struct sockaddr *)&servsockaddr, &addr_len);  //recvfrom从SOCKID的SOCKET获取数据报文。获取的报文放在buff里面。接收到的报文长度告诉len。
-		//if(len > 0)
-			//printf("len = %d \n", len);
+		if(len > 0)
+			printf("len = %d \n", len);
 
 	    //continue;
 		//len = recv(sockid, buff, 1500, 0);
@@ -1148,9 +1190,9 @@ int main(int argc, char* argv[] )
 		{
 			continue;
 		}
-
-              if(paypload_type == 96)
-		{
+		//printf("#########################preuts\n" );
+        	if(paypload_type == 96)
+			{
                     printf("time %d len %d\n", nowUTS - preUTS, framelen);
                     u64PTS = u64PTS + (nowUTS - preUTS); //时间戳递增
                     stStream.u64PTS  = u64PTS;
@@ -1165,14 +1207,19 @@ int main(int argc, char* argv[] )
               }
               else
               {
-                        printf("time %d len %d\n", audio_nowUTS - audio_preUTS, framelen);
+                        printf("time %d len %d\n", nowUTS - audio_preUTS, framelen);
                         u64Audio_PTS = u64Audio_PTS +  (audio_nowUTS - audio_preUTS); //时间戳递增
+                        stAudioStream.u64TimeStamp = u64Audio_PTS;
                         stAudioStream.pStream = framebuff;
                         stAudioStream.u32Len = framelen;
 
                         HI_MPI_ADEC_SendStream(0, &stAudioStream, HI_TRUE);
 
+						framelen = 0;
+
                          stAudioStream.u32Seq++;
+
+						 audio_preUTS = nowUTS;
 
               }
 	}

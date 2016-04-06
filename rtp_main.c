@@ -66,11 +66,14 @@ int InitRtpUdpSock(int port, char *ipaddr, struct sockaddr_in *addr)
 	sockaddr.sin_addr.s_addr=inet_addr(ipaddr);//这里不一样
 	sockaddr.sin_port=htons(port);
 	
-
-	char *buff= "dasddfsadfasfdsfsdf";
-	len = sendto(sockid, buff, strlen(buff), 0, (struct sockaddr *)&sockaddr, sizeof(sockaddr));
-	printf("len %d \n", len);
-	memcpy(addr, &sockaddr, sizeof(sockaddr));
+	//while(1)
+	{
+		char *buff= "dasddfsadfasfdsfsdf";
+		len = sendto(sockid, buff, strlen(buff), 0, (struct sockaddr *)&sockaddr, sizeof(sockaddr));
+		printf("len %d \n", len);
+		memcpy(addr, &sockaddr, sizeof(sockaddr));
+		//sleep(5);
+	}
 	return sockid;
 }
 
@@ -157,6 +160,10 @@ HI_S32 Init_AENC_AUDIO()
      stAioAttr.u32ChnCnt = 2;
      stAioAttr.u32ClkSel = 1;
 
+	gs_pstAiReSmpAttr = NULL;
+    gs_pstAoReSmpAttr = NULL;
+
+	gs_bUserGetMode = (HI_TRUE == gs_bAioReSample || HI_TRUE == gs_bAiAnr) ? HI_TRUE : HI_FALSE; 
 
      
     HI_S32 i, s32Ret;
@@ -182,6 +189,7 @@ HI_S32 Init_AENC_AUDIO()
     }
 #endif
 
+	printf("SAMPLE_COMM_AUDIO_CfgAcodec\n");
     /********************************************
       step 1: config audio codec
     ********************************************/
@@ -195,6 +203,7 @@ HI_S32 Init_AENC_AUDIO()
     /********************************************
       step 2: start Ai
     ********************************************/
+    printf("SAMPLE_COMM_AUDIO_StartAi\n");
     s32AiChnCnt = stAioAttr.u32ChnCnt; 
     s32AencChnCnt = 1;//s32AiChnCnt;
     s32Ret = SAMPLE_COMM_AUDIO_StartAi(AiDev, s32AiChnCnt, &stAioAttr, gs_bAiAnr, gs_pstAiReSmpAttr);
@@ -207,6 +216,7 @@ HI_S32 Init_AENC_AUDIO()
     /********************************************
       step 3: start Aenc
     ********************************************/
+    printf("SAMPLE_COMM_AUDIO_StartAenc\n");
     s32Ret = SAMPLE_COMM_AUDIO_StartAenc(s32AencChnCnt, gs_enPayloadType);
     if (s32Ret != HI_SUCCESS)
     {
@@ -224,6 +234,7 @@ HI_S32 Init_AENC_AUDIO()
 
         if (HI_TRUE == gs_bUserGetMode)
         {
+        	printf("SAMPLE_COMM_AUDIO_CreatTrdAiAenc\n");
             s32Ret = SAMPLE_COMM_AUDIO_CreatTrdAiAenc(AiDev, AiChn, AeChn);
             if (s32Ret != HI_SUCCESS)
             {
@@ -232,7 +243,8 @@ HI_S32 Init_AENC_AUDIO()
             }
         }
         else
-        {        
+        {     
+        	printf("SAMPLE_COMM_AUDIO_AencBindAi\n");
             s32Ret = SAMPLE_COMM_AUDIO_AencBindAi(AiDev, AiChn, AeChn);
             if (s32Ret != HI_SUCCESS)
             {
@@ -875,6 +887,8 @@ void Save_Audio_Data(void *p,  int channel)
         
         stream = (AUDIO_STREAM_S *)p;
 
+		printf("audio frame len : %d , pts = %lld\n",stream->u32Len, stream->u64TimeStamp);
+
         if(write_offset_tmp >= frame_buff[channel].buffer_size)
 	{	
 		write_offset_tmp = 0;
@@ -892,7 +906,7 @@ void Save_Audio_Data(void *p,  int channel)
 	}
 
         frame_pts = stream->u64TimeStamp;
-         (*(unsigned long long *)(frame_buff[channel].buffer_start + write_offset_tmp + 4)) = frame_pts;
+         (*(unsigned long long *)(frame_buff[channel].buffer_start + write_offset_tmp)) = frame_pts;
         write_offset_tmp  += 8;
         if(write_offset_tmp >= frame_buff[channel].buffer_size)
 	{	
@@ -913,6 +927,8 @@ void Save_Audio_Data(void *p,  int channel)
 		write_offset_tmp = (stream->u32Len - left_size);
 	}
 
+#if 0
+
          //清除后面未对齐的字节
         int temp = 8 - write_offset_tmp %8;
         if(temp > 0)
@@ -925,7 +941,7 @@ void Save_Audio_Data(void *p,  int channel)
         	}
             
         }
-
+#endif
         frame_buff[channel].write_offset  = write_offset_tmp;
         pthread_mutex_unlock(&write_mutex);
 
@@ -978,7 +994,8 @@ void GetAudioStream()
                 }
 
                 Save_Audio_Data(&stStream,  channel);//保存音频数据到buffer中
-    
+				
+				
                 /* send stream to decoder and play for testing */
                  //HI_MPI_ADEC_SendStream(channel, &stStream, HI_TRUE);
 
@@ -1469,10 +1486,11 @@ int main(int argc, char * argv[])
 	//InitAndStartEncode();
 	
 	VENC_4D1_H264();
+
         Init_AENC_AUDIO();
 
         pthread_create(&video_thread_id, NULL, Save_Video_Pthread,NULL);
-	//sleep(1);
+	sleep(1);
 		pthread_create(&audio_thread_id, NULL, Save_Audio_Pthread,NULL);
 	////////////////////////////////////////////////
 
@@ -1513,14 +1531,16 @@ int main(int argc, char * argv[])
                 if(ret ==0)
                     continue;
 
+				//printf("frame type = %x\n", frameInfo.frame_type);
                 if(0x62773330 == frameInfo.frame_type)/*音频*/
                 {        
-                        rtp_hdr->payload = 98;
-                        continue; /*暂时调试视频*/
+                        rtp_hdr->payload = 8;
+                        //continue; /*暂时调试视频*/
                 }
                 else
                 {
                         rtp_hdr->payload = 96;
+						//continue;
 
                 }
 
@@ -1537,6 +1557,8 @@ int main(int argc, char * argv[])
 
 		UTS = UTS + timestamp_increse;
 		rtp_hdr->timestamp = htonl(UTS);
+
+		printf("payload = %d\n", rtp_hdr->payload);
 
 		if(framelen < 1480)
 		{
