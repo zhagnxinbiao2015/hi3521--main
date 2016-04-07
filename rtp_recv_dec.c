@@ -173,6 +173,36 @@ static HI_S32 SAMPLE_VDEC_CreateVdecChn(HI_S32 s32ChnID, SIZE_S *pstSize, PAYLOA
 }
 
 
+static char* SAMPLE_AUDIO_Pt2Str(PAYLOAD_TYPE_E enType)
+{
+    if (PT_G711A == enType)  return "g711a";
+    else if (PT_G711U == enType)  return "g711u";
+    else if (PT_ADPCMA == enType)  return "adpcm";
+    else if (PT_G726 == enType)  return "g726";
+    else if (PT_LPCM == enType)  return "pcm";
+    else return "data";
+}
+
+
+
+static FILE *SAMPLE_AUDIO_OpenAdecFile(ADEC_CHN AdChn, PAYLOAD_TYPE_E enType)
+{
+    FILE *pfd;
+    HI_CHAR aszFileName[128];
+    
+    /* create file for save stream*/        
+    sprintf(aszFileName, "audio_chn%d.%s", AdChn, SAMPLE_AUDIO_Pt2Str(enType));
+    pfd = fopen(aszFileName, "rb");
+    if (NULL == pfd)
+    {
+        printf("%s: open file %s failed\n", __FUNCTION__, aszFileName);
+        return NULL;
+    }
+    printf("open stream file:\"%s\" for adec ok\n", aszFileName);
+    return pfd;
+}
+
+
 #define SAMPLE_AUDIO_AO_DEV 0    /*修改为1*/
 
 static HI_BOOL gs_bMicIn = HI_FALSE;
@@ -184,13 +214,16 @@ static AUDIO_RESAMPLE_ATTR_S *gs_pstAiReSmpAttr = NULL;
 
 
 
+FILE        *pfd = NULL;
+
+
 HI_S32 AUDIO_AdecAo(AIO_ATTR_S *pstAioAttr)
 {
         HI_S32      s32Ret;
         AUDIO_DEV   AoDev ;
         AO_CHN      AoChn = 0;
         ADEC_CHN    AdChn = 0;
-        FILE        *pfd = NULL;
+      
 
 #ifdef HDMI_OUT
         AoDev = SAMPLE_AUDIO_HDMI_AO_DEV;
@@ -232,15 +265,17 @@ HI_S32 AUDIO_AdecAo(AIO_ATTR_S *pstAioAttr)
             return HI_FAILURE;
         }
 
-        return HI_SUCCESS;
+        //return HI_SUCCESS;
 
-#if 0
+
         pfd = SAMPLE_AUDIO_OpenAdecFile(AdChn, gs_enPayloadType);
         if (!pfd)
         {
             SAMPLE_DBG(HI_FAILURE);
             return HI_FAILURE;
         }
+#if 0
+
         s32Ret = SAMPLE_COMM_AUDIO_CreatTrdFileAdec(AdChn, pfd);
         if (s32Ret != HI_SUCCESS)
         {
@@ -254,23 +289,15 @@ HI_S32 AUDIO_AdecAo(AIO_ATTR_S *pstAioAttr)
         getchar();
         getchar();
 
-        SAMPLE_COMM_AUDIO_DestoryTrdFileAdec(AdChn);
-        SAMPLE_COMM_AUDIO_StopAo(AoDev, AoChn, gs_bAioReSample);
-        SAMPLE_COMM_AUDIO_StopAdec(AdChn);
-        SAMPLE_COMM_AUDIO_AoUnbindAdec(AoDev, AoChn, AdChn);
+        //SAMPLE_COMM_AUDIO_DestoryTrdFileAdec(AdChn);
+       // SAMPLE_COMM_AUDIO_StopAo(AoDev, AoChn, gs_bAioReSample);
+       // SAMPLE_COMM_AUDIO_StopAdec(AdChn);
+       // SAMPLE_COMM_AUDIO_AoUnbindAdec(AoDev, AoChn, AdChn);
 #endif
         return HI_SUCCESS;
 }
 
-static char* SAMPLE_AUDIO_Pt2Str(PAYLOAD_TYPE_E enType)
-{
-    if (PT_G711A == enType)  return "g711a";
-    else if (PT_G711U == enType)  return "g711u";
-    else if (PT_ADPCMA == enType)  return "adpcm";
-    else if (PT_G726 == enType)  return "g726";
-    else if (PT_LPCM == enType)  return "pcm";
-    else return "data";
-}
+
 
 static FILE * SAMPLE_AUDIO_OpenAencFile(AENC_CHN AeChn, PAYLOAD_TYPE_E enType)
 {
@@ -810,7 +837,7 @@ int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts
 	{
 		//printf(" %d -", buff[i]);
 	}
-	printf("\n");
+	//printf("\n");
 
 
 	printf("version = %d , payload = %d ,marker = %d, uts = %ld\n", rtp_hdr->version, rtp_hdr->payload, rtp_hdr->marker, ntohl(rtp_hdr->timestamp));
@@ -1123,7 +1150,7 @@ int main(int argc, char* argv[] )
         unsigned int audio_preUTS = 0, audio_nowUTS = 0;
         AUDIO_STREAM_S stAudioStream;    
 
-        stAudioStream.u32Seq = 1;
+        //stAudioStream.u32Seq = 1;
 
 	char *cmd = "ifconfig eth0 192.168.1.20";
 	system(cmd);     //上面两个语句，就是把IP地址指定为192.168.1.20  。但通常的话，指定IP地址会在LINUX脚本里面指定。
@@ -1162,8 +1189,25 @@ int main(int argc, char* argv[] )
 //sizeof是C库里面的运算符，是算出结构体的长度。
 
 	printf("sockid %d\n",sockid);
+	int u32ReadLen, u32Len = 168;
+	
 	while(1)
-	{	memset(buff, 0, 1500);   //memset是系统函数，对内存进行设置。这在别人的程序里面也是这个名称。buff是我们上面定义的变量。0是把内存里面的都置为0,1500是BUFF的大小。
+	{	
+		
+		#if 0
+        u32ReadLen = fread(framebuff, 1, u32Len, pfd);
+		stAudioStream.pStream = framebuff;
+		stAudioStream.u32Len = u32ReadLen;
+		printf("len = %d\n", u32ReadLen);
+         HI_MPI_ADEC_SendStream(0, &stAudioStream, HI_TRUE);
+		 continue;
+		#endif
+
+
+
+		
+
+		memset(buff, 0, 1500);   //memset是系统函数，对内存进行设置。这在别人的程序里面也是这个名称。buff是我们上面定义的变量。0是把内存里面的都置为0,1500是BUFF的大小。
 		len = recvfrom(sockid, buff, 1500, 0, (struct sockaddr *)&servsockaddr, &addr_len);  //recvfrom从SOCKID的SOCKET获取数据报文。获取的报文放在buff里面。接收到的报文长度告诉len。
 		if(len > 0)
 			printf("len = %d \n", len);
@@ -1193,7 +1237,7 @@ int main(int argc, char* argv[] )
 		//printf("#########################preuts\n" );
         	if(paypload_type == 96)
 			{
-                    printf("time %d len %d\n", nowUTS - preUTS, framelen);
+                    printf("time %d len %d\n\n", nowUTS - preUTS, framelen);
                     u64PTS = u64PTS + (nowUTS - preUTS); //时间戳递增
                     stStream.u64PTS  = u64PTS;
                     stStream.pu8Addr = framebuff; //一帧视频的地址
@@ -1207,11 +1251,13 @@ int main(int argc, char* argv[] )
               }
               else
               {
-                        printf("time %d len %d\n", nowUTS - audio_preUTS, framelen);
+                        printf("audio time %d len %d\n", nowUTS - audio_preUTS, framelen);
                         u64Audio_PTS = u64Audio_PTS +  (audio_nowUTS - audio_preUTS); //时间戳递增
                         stAudioStream.u64TimeStamp = u64Audio_PTS;
                         stAudioStream.pStream = framebuff;
                         stAudioStream.u32Len = framelen;
+
+						printf("%02x %02x %02x %02x \n\n", stAudioStream.pStream[0],stAudioStream.pStream[1],stAudioStream.pStream[2],stAudioStream.pStream[3]);
 
                         HI_MPI_ADEC_SendStream(0, &stAudioStream, HI_TRUE);
 

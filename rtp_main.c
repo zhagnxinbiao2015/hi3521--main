@@ -887,7 +887,7 @@ void Save_Audio_Data(void *p,  int channel)
         
         stream = (AUDIO_STREAM_S *)p;
 
-		printf("audio frame len : %d , pts = %lld\n",stream->u32Len, stream->u64TimeStamp);
+		//printf("audio frame len : %d , pts = %lld\n",stream->u32Len, stream->u64TimeStamp);
 
         if(write_offset_tmp >= frame_buff[channel].buffer_size)
 	{	
@@ -992,6 +992,8 @@ void GetAudioStream()
                 {
                        continue;
                 }
+
+				printf("%02x %02x %02x %02x \n", stStream.pStream[0],stStream.pStream[1],stStream.pStream[2],stStream.pStream[3]);
 
                 Save_Audio_Data(&stStream,  channel);//保存音频数据到buffer中
 				
@@ -1500,7 +1502,7 @@ int main(int argc, char * argv[])
 
 	printf("##########################\n");
 
-	framebuff = (unsigned char *)malloc(buffersize);//申请内存大小
+	//framebuff = (unsigned char *)malloc(buffersize);//申请内存大小
 
 
 	gettimeofday(&now_tmp, 0);//获取时间
@@ -1535,6 +1537,7 @@ int main(int argc, char * argv[])
                 if(0x62773330 == frameInfo.frame_type)/*音频*/
                 {        
                         rtp_hdr->payload = 8;
+						
                         //continue; /*暂时调试视频*/
                 }
                 else
@@ -1543,11 +1546,12 @@ int main(int argc, char * argv[])
 						//continue;
 
                 }
+				framebuff = frame_buff[0].buffer_start + frameInfo.frame_read_offset; /*视频缓存的帧地址*/
 
                 FramePts = frameInfo.frame_pts;
                 framelen= frameInfo.frame_length;
 
-				printf("len = %d pts = %lld \n", framelen, FramePts);
+				printf("len = %d pts = %lld ", framelen, FramePts);
 	        
 		if(prePts != 0)
 		{
