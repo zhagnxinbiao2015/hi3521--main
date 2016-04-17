@@ -832,7 +832,7 @@ int Parse_RtpHeader(unsigned char *buff, unsigned int len, unsigned int *pre_pts
 
 	rtp_hdr =(RTP_FIXED_HEADER*)&buff[0]; 
 
-#if 1
+#if 0
 	for(i = 0; i < 12; i++)
 	{
 		//printf(" %d -", buff[i]);
@@ -1209,8 +1209,8 @@ int main(int argc, char* argv[] )
 
 		memset(buff, 0, 1500);   //memset是系统函数，对内存进行设置。这在别人的程序里面也是这个名称。buff是我们上面定义的变量。0是把内存里面的都置为0,1500是BUFF的大小。
 		len = recvfrom(sockid, buff, 1500, 0, (struct sockaddr *)&servsockaddr, &addr_len);  //recvfrom从SOCKID的SOCKET获取数据报文。获取的报文放在buff里面。接收到的报文长度告诉len。
-		if(len > 0)
-			printf("len = %d \n", len);
+		//if(len > 0)
+		//	printf("len = %d \n", len);
 
 	    //continue;
 		//len = recv(sockid, buff, 1500, 0);
@@ -1237,7 +1237,7 @@ int main(int argc, char* argv[] )
 		//printf("#########################preuts\n" );
         	if(paypload_type == 96)
 			{
-                    printf("time %d len %d\n\n", nowUTS - preUTS, framelen);
+                    //printf("time %d len %d\n\n", nowUTS - preUTS, framelen);
                     u64PTS = u64PTS + (nowUTS - preUTS); //时间戳递增
                     stStream.u64PTS  = u64PTS;
                     stStream.pu8Addr = framebuff; //一帧视频的地址
@@ -1251,13 +1251,13 @@ int main(int argc, char* argv[] )
               }
               else
               {
-                        printf("audio time %d len %d\n", nowUTS - audio_preUTS, framelen);
+                       // printf("audio time %d len %d\n", nowUTS - audio_preUTS, framelen);
                         u64Audio_PTS = u64Audio_PTS +  (audio_nowUTS - audio_preUTS); //时间戳递增
                         stAudioStream.u64TimeStamp = u64Audio_PTS;
                         stAudioStream.pStream = framebuff;
                         stAudioStream.u32Len = framelen;
 
-						printf("%02x %02x %02x %02x \n\n", stAudioStream.pStream[0],stAudioStream.pStream[1],stAudioStream.pStream[2],stAudioStream.pStream[3]);
+						//printf("%02x %02x %02x %02x \n\n", stAudioStream.pStream[0],stAudioStream.pStream[1],stAudioStream.pStream[2],stAudioStream.pStream[3]);
 
                         HI_MPI_ADEC_SendStream(0, &stAudioStream, HI_TRUE);
 

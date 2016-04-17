@@ -948,6 +948,20 @@ void Save_Audio_Data(void *p,  int channel)
 }
 
 
+int GetAudioStreamFD()
+{
+		HI_S32 s32Ret;
+        HI_S32 AencFd;
+
+        AUDIO_STREAM_S stStream;
+        HI_S32  channel = 0;                    //0 channel
+        
+    
+        AencFd = HI_MPI_AENC_GetFd(channel);
+
+		return AencFd;
+
+}
 
 void GetAudioStream()
     {
@@ -993,7 +1007,7 @@ void GetAudioStream()
                        continue;
                 }
 
-				printf("%02x %02x %02x %02x \n", stStream.pStream[0],stStream.pStream[1],stStream.pStream[2],stStream.pStream[3]);
+				//printf("%02x %02x %02x %02x \n", stStream.pStream[0],stStream.pStream[1],stStream.pStream[2],stStream.pStream[3]);
 
                 Save_Audio_Data(&stStream,  channel);//保存音频数据到buffer中
 				
@@ -1033,6 +1047,12 @@ void GetVideoStream()
 	pstPara.s32Cnt = 1;
 	pstPara.bThreadStart = HI_TRUE;
 	s32ChnTotal = pstPara.s32Cnt;
+
+	AUDIO_STREAM_S audio_stStream;
+	HI_S32 audio_fd = 0;
+	audio_fd = GetAudioStreamFD();
+
+	maxfd = audio_fd;
 
 	/******************************************
 	 step 1:  check & prepare save-file & venc-fd
@@ -1085,6 +1105,9 @@ void GetVideoStream()
 		}
 	}
 
+	
+	
+
 	/******************************************
 	 step 2:  Start to get streams of each channel.
 	******************************************/
@@ -1095,7 +1118,8 @@ void GetVideoStream()
 		{
 			FD_SET(VencFd[i], &read_fds);
 		}
-
+		FD_SET(audio_fd, &read_fds);
+		
 		TimeoutVal.tv_sec  = 2;
 		TimeoutVal.tv_usec = 0;
 		s32Ret = select(maxfd + 1, &read_fds, NULL, NULL, &TimeoutVal);
@@ -1149,7 +1173,7 @@ void GetVideoStream()
 							   s32Ret);
 						break;
 					}
-
+#if 0
 					/*******************************************************
 					 step 2.4 : save frame to file
 					*******************************************************/
@@ -1161,7 +1185,7 @@ void GetVideoStream()
 						SAMPLE_PRT("save stream failed!\n");
 						break;
 					}
-
+#endif
 					Save_Frame_Data(&stStream, 0) ;
 					
 					/*******************************************************
@@ -1180,6 +1204,29 @@ void GetVideoStream()
 					free(stStream.pstPack);
 					stStream.pstPack = NULL;
 				}
+			}
+
+			/////////////////////
+			if (FD_ISSET(audio_fd, &read_fds))
+			{
+				/* get stream from aenc chn */
+                s32Ret = HI_MPI_AENC_GetStream(0, &audio_stStream, HI_FALSE);
+                if (HI_SUCCESS != s32Ret )
+                {
+                       continue;
+                }
+
+				//printf("%02x %02x %02x %02x \n", audio_stStream.pStream[0],audio_stStream.pStream[1],audio_stStream.pStream[2],audio_stStream.pStream[3]);
+
+                Save_Audio_Data(&audio_stStream,  0);//保存音频数据到buffer中
+				
+				
+                /* send stream to decoder and play for testing */
+                 //HI_MPI_ADEC_SendStream(channel, &stStream, HI_TRUE);
+
+                
+                /* finally you must release the stream */
+                HI_MPI_AENC_ReleaseStream(0, &audio_stStream);
 			}
 		}
 	}
@@ -1493,7 +1540,7 @@ int main(int argc, char * argv[])
 
         pthread_create(&video_thread_id, NULL, Save_Video_Pthread,NULL);
 	sleep(1);
-		pthread_create(&audio_thread_id, NULL, Save_Audio_Pthread,NULL);
+		//pthread_create(&audio_thread_id, NULL, Save_Audio_Pthread,NULL);
 	////////////////////////////////////////////////
 
 	//sockclient = Init_Multicast_Sock(&sintcpclientaddr);                                            //组播传输视频数据
@@ -1551,7 +1598,7 @@ int main(int argc, char * argv[])
                 FramePts = frameInfo.frame_pts;
                 framelen= frameInfo.frame_length;
 
-				printf("len = %d pts = %lld ", framelen, FramePts);
+				//printf("len = %d pts = %lld ", framelen, FramePts);
 	        
 		if(prePts != 0)
 		{
@@ -1562,7 +1609,7 @@ int main(int argc, char * argv[])
 		UTS = UTS + timestamp_increse;
 		rtp_hdr->timestamp = htonl(UTS);
 
-		printf("payload = %d\n", rtp_hdr->payload);
+		//printf("payload = %d\n", rtp_hdr->payload);
 
 		if(framelen < 1480)
 		{
