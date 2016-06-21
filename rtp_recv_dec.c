@@ -566,8 +566,8 @@ HI_S32 Init_MultiSock_VDEC_Process(PIC_SIZE_E enPicSize, PAYLOAD_TYPE_E enType, 
 
    
       
-     stVoPubAttr.enIntfSync = VO_OUTPUT_720P50;
-
+     //stVoPubAttr.enIntfSync = VO_OUTPUT_720P50;
+	 stVoPubAttr.enIntfSync= VO_OUTPUT_1080P25; /*影响之前全屏的问题*/
     
     stVoPubAttr.enIntfType = vo_interface_type;//VO_INTF_VGA;
     stVoPubAttr.u32BgColor = 0x000000ff;

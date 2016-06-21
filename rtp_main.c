@@ -289,12 +289,14 @@ HI_S32 VENC_4D1_H264()
 	SIZE_S stSize;
 
 	/******************************************
-	 step  1: init variable 
+	 step  1: init variable  分辨率方面的设置
 	******************************************/
 	memset(&stVbConf,0,sizeof(VB_CONF_S));
 
-	u32BlkSize = SAMPLE_COMM_SYS_CalcPicVbBlkSize(gs_enNorm,\
-				PIC_D1, SAMPLE_PIXEL_FORMAT, SAMPLE_SYS_ALIGN_WIDTH);
+	u32BlkSize = SAMPLE_COMM_SYS_CalcPicVbBlkSize(gs_enNorm,\     
+				PIC_D1, SAMPLE_PIXEL_FORMAT, SAMPLE_SYS_ALIGN_WIDTH);  //关于设置一些编码的分辨率的PIC_HD1080是编码成PIC_D1  格式的。
+//分辨率方面的设置。
+
 	stVbConf.u32MaxPoolCnt = 128;
 	
 	stVbConf.astCommPool[0].u32BlkSize = u32BlkSize;
@@ -309,7 +311,7 @@ HI_S32 VENC_4D1_H264()
 		sizeof(stVbConf.astCommPool[1].acMmzName));
 
 	/******************************************
-	 step 2: mpp system init. 
+	 step 2: mpp system init.   //音视频管理模块的初始化。我们这里没有改动它。从他们参考程序拷过来的。
 	******************************************/
 	s32Ret = SAMPLE_COMM_SYS_Init(&stVbConf);
 	if (HI_SUCCESS != s32Ret)
@@ -329,7 +331,7 @@ HI_S32 VENC_4D1_H264()
 	}
 	
 	/******************************************
-	 step 4: start vpss and vi bind vpss
+	 step 4: start vpss and vi bind vpss  预处理模块。预处理是在编码之前对画面处理，分析。例如加入OSD 。
 	******************************************/
 	s32Ret = SAMPLE_COMM_SYS_GetPicSize(gs_enNorm, PIC_D1, &stSize);
 	if (HI_SUCCESS != s32Ret)
@@ -362,8 +364,8 @@ HI_S32 VENC_4D1_H264()
 		goto END_VENC_8D1_2;
 	}
 
-	/******************************************
-	 step 5: select rc mode
+	/****************************************** 
+	 step 5: select rc mode             可变码率的设置。
 	******************************************/
 	//while(1)
 	{
@@ -371,7 +373,7 @@ HI_S32 VENC_4D1_H264()
 		//printf("\t0) CBR\n"); 
 		//printf("\t1) VBR\n"); 
 		//printf("\t2) FIXQP\n"); 
-		ch = '1';
+		ch = '1';    //可变码率，指的是，例如人摄像头遇到人走过，就让他清晰度高一点。一帧里面的清晰度就更高。
 	
 		if ('0' == ch)
 		{
@@ -391,8 +393,12 @@ HI_S32 VENC_4D1_H264()
 		}
 	}
 	/******************************************
-	 step 5: start stream venc (big + little)
+	 step 5: start stream venc (big + little)     //一个通道编码会同时输出两个码流，用于本地存储的主码流和用于网咯传输的子码流。
 	******************************************/
+//我们采用的是主码流来进行传输的。如果资源很紧张，是否可以关掉子码流呢？
+
+
+
 	for (i=0; i<u32ViChnCnt; i++)
 	{
 		/*** main stream **/
@@ -436,7 +442,7 @@ HI_S32 VENC_4D1_H264()
 	return;
 
 	/******************************************
-	 step 6: stream venc process -- get stream, then save it to file. 
+	 step 6: stream venc process -- get stream, then save it to file.     // 保存编码出来的视频数据到硬盘的文件。
 	******************************************/
 	s32Ret = SAMPLE_COMM_VENC_StartGetStream(u32ViChnCnt*2);
 	if (HI_SUCCESS != s32Ret)
@@ -450,7 +456,7 @@ HI_S32 VENC_4D1_H264()
 	getchar();
 
 	/******************************************
-	 step 7: exit process
+	 step 7: exit process      // 不需要对整个做初始化，就进行停止。 这里没有用到。
 	******************************************/
 	SAMPLE_COMM_VENC_StopGetStream();
 	
@@ -663,19 +669,23 @@ struct _frame_buffer *frame_buff;
 pthread_mutex_t write_mutex;
 
 
-void  Init_Frame_Buffer(int num)
+void  Init_Frame_Buffer(int num)   // 这是定义缓冲区，后续数据音视频数据存入缓冲区。num是通道数。我们在调用这个函数时候，会给num指定值的。例如现在的输入端口是1，就带num参数是1。在主函数是这么调用的。
 {
-	int index = 0;
-	int i_index = 0;
+	int index ;   //
+	int i_index ;
 
-	if(num < 0)
+	if(num < 0)   //如果没有通道，那么程序结束。也就是说没有通道，或没有设置通道。
 		return ;
 	
-	frame_buff = (struct _frame_buffer  *)malloc(num * sizeof(Frame_buffer));
+	frame_buff = (struct _frame_buffer  *)malloc(num * sizeof(Frame_buffer));  //frame_buff是一个结构体，是指针形式的结构体。
 
-	for(index = 0; index < num; index++)
+//上面 malloc是默认的C库函数。功能是向系统申请一段内存。上面一句是为frame_buff申请对应结构体大小的内存。
+//
+
+
+	for(index = 0; index < num; index++)  //看后面的主函数调用设置num的数，如果是1，就跑一次。申请了一个缓冲区。
 	{
-		frame_buff[index].buffer_size = BUFFER_SIZE;
+		frame_buff[index].buffer_size = BUFFER_SIZE;  //buffer_size是我们前面定义的变量。已经赋值为8M 大小。
 		//printf("buffer size = %ld \n", frame_buff[index].buffer_size);
 
 		frame_buff[index].buffer_start = (unsigned char *)malloc(frame_buff[index].buffer_size);
@@ -688,9 +698,11 @@ void  Init_Frame_Buffer(int num)
 		frame_buff[index].write_offset = 0;
 		frame_buff[index].Ilist_curr = 0;
 
+//以上是对于frame_buff的初始话。也设置了缓存区是8M了。通常设置好了就不会经常改。
+
 		for(i_index = 0; i_index < IFRAME_MAX_NUM; i_index++)
 		{
-			memset(&(frame_buff[index].ikey_list[i_index]), 0, sizeof(Iframe_list));
+			memset(&(frame_buff[index].ikey_list[i_index]), 0, sizeof(Iframe_list));  //这两句是关于I帧的索引
 		}
 	}
 	
@@ -1494,6 +1506,212 @@ int CreateCommonBuffer(int channel, int buffersize)
 }
 */
 
+
+FILE *ascfd = NULL;
+
+void Open_Asc_File()
+{
+
+        if((ascfd = fopen("./asc16","rb")) == NULL)
+        {
+                ;
+        }
+
+}
+
+void Get_Osd_Time_asc(char tx, unsigned char *buffer)
+{
+        fseek(ascfd, (tx)*16,0);	
+	fread(buffer,16,1,ascfd);
+#if 0
+        printf("%c  :  ", tx);
+        int index = 0;
+        for(index = 0; index < 16; index++)
+            printf("%02x  ", buffer[index]);
+        printf("\n");
+#endif
+}
+
+
+void osd_to_rgb(char *s, char *d, int textlen)
+{
+        int i = 0, j = 0, m ,n ;
+        
+        unsigned int zcolor = 0x1333;
+        unsigned int bcolor = 0x00;
+        
+        unsigned char R = zcolor&0x1f;
+        unsigned char G = zcolor>>5&0x1f;
+        unsigned char B = zcolor>>10&0x1f;
+
+        
+   
+	for(m = 0;m<16;m++)//行
+	{
+		for(n= 0;n<2;n++)
+		{
+			for(i=0; i<textlen; i++)
+			{
+
+				for(j=0;j<8;j++) 
+	 			{ 
+	 				if(((s[m+i*16]>>(7-j))&0x1)!=0) 
+					{
+						*(unsigned short *)d = 0x8000 | (R << 10) | (G << 5) | (B);
+						d += 2;
+						*(unsigned short *)d = 0x8000 | (R << 10) | (G << 5) | (B);
+						d += 2;
+					}
+					else
+					{
+						*d++ = bcolor;
+						*d++ = bcolor;
+						
+						*d++ = bcolor;
+						*d++ = bcolor;
+					}
+	 			}
+				
+			}
+
+		}
+	}
+}
+
+
+
+
+
+
+void *Show_Time_Osd(void *arg)
+{
+        unsigned char tmp2 = 0;
+        char realtime[25]={0};
+        struct tm tmptime;
+
+		int s32Ret;
+		RGN_HANDLE OverlayExHandle = 0;
+		BITMAP_S stBitmap;
+        
+        unsigned int lib_current=0;	//记录当前lib位置	
+        unsigned char  lib[512];
+        memset(lib,0,512);//读取字库文件
+        char tmp;
+        time_t now;
+
+        char *pdata;
+        char *p;
+
+		Open_Asc_File();
+
+        pdata = malloc((8 * 19 *2) * (16 * 2) *2);
+
+        while(1)
+        {
+        		//memset(pdata, 0 , ((8 * 22 *2) * (16 * 2) *2));
+				//printf("1111111111111111\n");
+                now = time((time_t*)NULL);
+                gmtime_r(&now, &tmptime);
+                memset(realtime, 0 , sizeof(realtime));
+                lib_current = 0;
+				
+                if(tmptime.tm_sec != tmp2)
+                {
+                	memset(realtime, 0, sizeof(realtime));
+					
+                	sprintf(realtime, "%04d-%02d-%02d %02d:%02d:%02d", 
+                		tmptime.tm_year+1900, tmptime.tm_mon+1, tmptime.tm_mday,
+                		tmptime.tm_hour, tmptime.tm_min, tmptime.tm_sec);
+
+						//memset(realtime, 0, sizeof(realtime));
+						//strcpy(realtime, "1");
+					   
+                       p = realtime;
+
+					   
+					   
+                        
+                        while(*p)
+                        {		
+                                Get_Osd_Time_asc(*p, &lib[lib_current]);
+                                lib_current += 16;
+                                p++;
+                        }
+
+                        osd_to_rgb(lib, pdata, strlen(realtime));
+
+                        tmp2 = tmptime.tm_sec;
+
+                        printf("%s  \n", realtime);
+
+
+						stBitmap.pData = pdata;
+						stBitmap.u32Width = 8*2*19;
+						stBitmap.u32Height = 32 ;
+						stBitmap.enPixelFormat = PIXEL_FORMAT_RGB_1555;	
+
+
+						s32Ret = HI_MPI_RGN_SetBitMap(OverlayExHandle,&stBitmap);
+						if(s32Ret != HI_SUCCESS)
+						{
+							SAMPLE_PRT("HI_MPI_RGN_SetBitMap failed with %#x!\n", s32Ret);
+						//return HI_FAILURE;
+						}
+
+                    }
+     }
+        
+}
+
+
+
+int Init_Osd(VI_DEV ViDev,VI_CHN ViChn)
+{
+	HI_S32 s32Ret = HI_FAILURE;
+	
+	RGN_HANDLE OverlayExHandle = 0;
+	RGN_ATTR_S stOverlayExAttr;
+	MPP_CHN_S stOverlayExChn;
+	RGN_CHN_ATTR_S stOverlayExChnAttr;
+	BITMAP_S stBitmap;
+	
+	stOverlayExAttr.enType = OVERLAYEX_RGN;
+	stOverlayExAttr.unAttr.stOverlayEx.enPixelFmt = PIXEL_FORMAT_RGB_1555;
+	stOverlayExAttr.unAttr.stOverlayEx.u32BgColor =  0x00ffffff;
+	stOverlayExAttr.unAttr.stOverlayEx.stSize.u32Height = 32 ; /*预设 背景图片的长和宽*/
+	stOverlayExAttr.unAttr.stOverlayEx.stSize.u32Width= 8*2*19;
+	
+	s32Ret = HI_MPI_RGN_Create(OverlayExHandle, &stOverlayExAttr);
+	if(HI_SUCCESS != s32Ret)
+	{
+		SAMPLE_PRT("HI_MPI_RGN_Create failed with %#x!\n", s32Ret);
+		return HI_FAILURE;
+	}
+
+	stOverlayExChnAttr.enType = OVERLAYEX_RGN;
+	stOverlayExChnAttr.bShow = HI_TRUE;
+	stOverlayExChnAttr.unChnAttr.stOverlayExChn.stPoint.s32X = 128;
+	stOverlayExChnAttr.unChnAttr.stOverlayExChn.stPoint.s32Y = 256;
+	stOverlayExChnAttr.unChnAttr.stOverlayExChn.u32BgAlpha = 50;
+	stOverlayExChnAttr.unChnAttr.stOverlayExChn.u32FgAlpha = 130;
+	stOverlayExChnAttr.unChnAttr.stOverlayExChn.u32Layer = 1;
+
+	stOverlayExChn.enModId = HI_ID_VIU;
+	stOverlayExChn.s32DevId = ViDev;
+	stOverlayExChn.s32ChnId = ViChn;
+
+	s32Ret = HI_MPI_RGN_AttachToChn(OverlayExHandle,&stOverlayExChn,&stOverlayExChnAttr);
+	if(HI_SUCCESS != s32Ret)
+	{
+		SAMPLE_PRT("HI_MPI_RGN_AttachToChn failed with %#x!\n", s32Ret);
+		return HI_FAILURE;
+	}
+	usleep(200*1000*5);
+	
+	return 0;
+}
+
+
 /***********************************************
 功           能:	程序入口
 输入参数:	系统自动调配
@@ -1529,16 +1747,24 @@ int main(int argc, char * argv[])
 
         CurFrameInfo frameInfo;
 
-	Init_Frame_Buffer(1);
+	Init_Frame_Buffer(1);   //(1)初始化缓存区
 
     //初始化以及启动编码设置//////
 	//InitAndStartEncode();
 	
-	VENC_4D1_H264();
+	VENC_4D1_H264();  //初始化视频编码
 
         Init_AENC_AUDIO();
 
-        pthread_create(&video_thread_id, NULL, Save_Video_Pthread,NULL);
+
+	/*初始化OSD*/
+	Init_Osd(0,0);
+	pthread_t osd_thread_id;
+	
+    pthread_create(&osd_thread_id, NULL, Show_Time_Osd,NULL);
+	sleep(1);
+	
+    pthread_create(&video_thread_id, NULL, Save_Video_Pthread,NULL);
 	sleep(1);
 		//pthread_create(&audio_thread_id, NULL, Save_Audio_Pthread,NULL);
 	////////////////////////////////////////////////
