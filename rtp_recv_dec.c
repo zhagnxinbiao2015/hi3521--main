@@ -1144,6 +1144,10 @@ int main(int argc, char* argv[] )
 	rtp_marker_type rtp_marker;
 	unsigned char framebuff[311040];
 	unsigned int framelen = 0;
+
+        unsigned char audioframebuff[10*1024];
+        unsigned int audioframelen = 0;
+    
 	VDEC_STREAM_S stStream;
 
         int paypload_type;
@@ -1220,13 +1224,29 @@ int main(int argc, char* argv[] )
 		rtp_marker = Parse_RtpHeader(buff, len, &nowUTS, &payloadoffset, &paypload_type);  //buff接收到的报文，由RTP格式进行解码。并把是否是一帧数据的报文，返回给RTPMAKER ,目的是判断是否一帧最后报文，如果是，就用输出函数来解码播放。
 		if(rtp_marker == rtp_pac_end) //一帧接收完毕将之前接收的数据组装成一帧的视频数据
 		{
-			memcpy(framebuff + framelen, buff + payloadoffset, len - payloadoffset);//如果接收到是帧的结尾，就进行内存拷贝，把BUFF拷贝到帧缓存FRAMEBUFF里面，输出函数会来FRAMEBUFF里面取数据输出。
-			framelen = framelen + len - payloadoffset;  //可以得到一帧的长度，后面输出函数需要用到。
+		       if(paypload_type == 96)
+			{
+			        memcpy(framebuff + framelen, buff + payloadoffset, len - payloadoffset);//如果接收到是帧的结尾，就进行内存拷贝，把BUFF拷贝到帧缓存FRAMEBUFF里面，输出函数会来FRAMEBUFF里面取数据输出。
+			        framelen = framelen + len - payloadoffset;  //可以得到一帧的长度，后面输出函数需要用到。
+                    }
+                    else
+                    {
+                            memcpy(audioframebuff + audioframelen, buff + payloadoffset, len - payloadoffset);
+			        audioframelen = audioframelen + len - payloadoffset; 
+                    }
 		}
 		else if(rtp_marker == rtp_pac_inter)//一帧未接收完毕，则再continue 循环接收下一个RTP报文
 		{
-			memcpy(framebuff + framelen, buff + payloadoffset, len - payloadoffset);
-			framelen = framelen + len - payloadoffset;
+		       if(paypload_type == 96)
+                    {      
+			        memcpy(framebuff + framelen, buff + payloadoffset, len - payloadoffset);
+			        framelen = framelen + len - payloadoffset;
+                    }
+                    else 
+                     {
+                            memcpy(audioframebuff + audioframelen, buff + payloadoffset, len - payloadoffset);
+			        audioframelen = audioframelen + len - payloadoffset; 
+                    }
 			
 			continue;  //continue是和while对应的。就是说如果还不是帧的结尾，就继续接收下一个报文。
 		}
@@ -1254,14 +1274,14 @@ int main(int argc, char* argv[] )
                        // printf("audio time %d len %d\n", nowUTS - audio_preUTS, framelen);
                         u64Audio_PTS = u64Audio_PTS +  (audio_nowUTS - audio_preUTS); //时间戳递增
                         stAudioStream.u64TimeStamp = u64Audio_PTS;
-                        stAudioStream.pStream = framebuff;
-                        stAudioStream.u32Len = framelen;
+                        stAudioStream.pStream = audioframebuff;
+                        stAudioStream.u32Len = audioframelen;
 
 						//printf("%02x %02x %02x %02x \n\n", stAudioStream.pStream[0],stAudioStream.pStream[1],stAudioStream.pStream[2],stAudioStream.pStream[3]);
 
                         HI_MPI_ADEC_SendStream(0, &stAudioStream, HI_TRUE);
 
-						framelen = 0;
+						audioframelen = 0;
 
                          stAudioStream.u32Seq++;
 
